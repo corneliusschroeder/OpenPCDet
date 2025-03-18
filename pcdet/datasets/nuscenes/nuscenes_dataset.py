@@ -18,7 +18,6 @@ class NuScenesDataset(DatasetTemplate):
         super().__init__(
             dataset_cfg=dataset_cfg, class_names=class_names, training=training, root_path=root_path, logger=logger
         )
-        self.alt_root_path = Path('/OpenPCDet/data/nuscenes_prep') / dataset_cfg.VERSION
         self.infos = []
         self.camera_config = self.dataset_cfg.get('CAMERA_CONFIG', None)
         if self.camera_config is not None:
@@ -36,8 +35,7 @@ class NuScenesDataset(DatasetTemplate):
         nuscenes_infos = []
 
         for info_path in self.dataset_cfg.INFO_PATH[mode]:
-            info_path = self.alt_root_path / info_path
-            print(info_path)
+            info_path = self.root_path / info_path
             if not info_path.exists():
                 continue
             with open(info_path, 'rb') as f:
@@ -314,8 +312,8 @@ class NuScenesDataset(DatasetTemplate):
     def create_groundtruth_database(self, used_classes=None, max_sweeps=10):
         import torch
 
-        database_save_path = self.alt_root_path / f'gt_database_{max_sweeps}sweeps_withvelo'
-        db_info_save_path = self.alt_root_path / f'nuscenes_dbinfos_{max_sweeps}sweeps_withvelo.pkl'
+        database_save_path = self.root_path / f'gt_database_{max_sweeps}sweeps_withvelo'
+        db_info_save_path = self.root_path / f'nuscenes_dbinfos_{max_sweeps}sweeps_withvelo.pkl'
 
         database_save_path.mkdir(parents=True, exist_ok=True)
         all_db_infos = {}
@@ -342,7 +340,7 @@ class NuScenesDataset(DatasetTemplate):
                     gt_points.tofile(f)
 
                 if (used_classes is None) or gt_names[i] in used_classes:
-                    db_path = str(filepath.relative_to(self.alt_root_path))  # gt_database/xxxxx.bin
+                    db_path = str(filepath.relative_to(self.root_path))  # gt_database/xxxxx.bin
                     db_info = {'name': gt_names[i], 'path': db_path, 'image_idx': sample_idx, 'gt_idx': i,
                                'box3d_lidar': gt_boxes[i], 'num_points_in_gt': gt_points.shape[0]}
                     if gt_names[i] in all_db_infos:
@@ -423,7 +421,7 @@ if __name__ == '__main__':
         create_nuscenes_info(
             version=dataset_cfg.VERSION,
             data_path=ROOT_DIR / 'data' / 'nuscenes',
-            save_path=ROOT_DIR / 'data' / 'nuscenes_prep',
+            save_path=ROOT_DIR / 'data' / 'nuscenes',
             max_sweeps=dataset_cfg.MAX_SWEEPS,
             with_cam=args.with_cam
         )
