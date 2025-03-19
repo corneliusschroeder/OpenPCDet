@@ -7,6 +7,7 @@ import open3d
 import torch
 import matplotlib
 import numpy as np
+from ..uncertainty_utils import compute_confidence_interval
 
 box_colormap = [
     [1, 1, 1],
@@ -35,13 +36,15 @@ def get_coor_colors(obj_labels):
     return label_rgba
 
 
-def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_labels=None, ref_scores=None, point_colors=None, draw_origin=True):
+def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_labels=None, ref_scores=None, point_colors=None, draw_origin=True, ref_uncertainties=None):
     if isinstance(points, torch.Tensor):
         points = points.cpu().numpy()
     if isinstance(gt_boxes, torch.Tensor):
         gt_boxes = gt_boxes.cpu().numpy()
     if isinstance(ref_boxes, torch.Tensor):
         ref_boxes = ref_boxes.cpu().numpy()
+    if isinstance(ref_uncertainties, torch.Tensor):
+        ref_uncertainties = ref_uncertainties.cpu().numpy()
 
     vis = open3d.visualization.Visualizer()
     vis.create_window()
@@ -67,7 +70,7 @@ def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_labels=None, ref_scor
         vis = draw_box(vis, gt_boxes, (0, 0, 1))
 
     if ref_boxes is not None:
-        vis = draw_box(vis, ref_boxes, (0, 1, 0), ref_labels, ref_scores)
+        vis = draw_box(vis, ref_boxes, (0, 1, 0), ref_labels, ref_scores, ref_uncertainties)
 
     vis.run()
     vis.destroy_window()
@@ -100,14 +103,39 @@ def translate_boxes_to_open3d_instance(gt_boxes):
     return line_set, box3d
 
 
-def draw_box(vis, gt_boxes, color=(0, 1, 0), ref_labels=None, score=None):
+def convert_uncertainties_to_bounding_boxes(box, uncertainty):
+    std_dist = compute_confidence_interval(uncertainty)
+    box_bigger = box.copy()
+    box_smaller = box.copy()
+    box_smaller[3:6] -= std_dist[3:6]
+    box_bigger[3:6] += std_dist[3:6]
+
+    box_smaller[3:5] -= std_dist[:2]
+    box_bigger[3:5] += std_dist[:2]
+
+    box_smaller[3:6][box_smaller[3:6]<0.0] = 0
+    
+    smaller_box_lines, _ = translate_boxes_to_open3d_instance(box_smaller)
+    bigger_box_lines, _ = translate_boxes_to_open3d_instance(box_bigger)
+    
+    return smaller_box_lines, bigger_box_lines
+
+
+def draw_box(vis, gt_boxes, color=(0, 1, 0), ref_labels=None, score=None, uncertainty=None):
     for i in range(gt_boxes.shape[0]):
+        if score is not None and score[i] < 0.5:
+            continue
         line_set, box3d = translate_boxes_to_open3d_instance(gt_boxes[i])
         if ref_labels is None:
             line_set.paint_uniform_color(color)
         else:
-            line_set.paint_uniform_color(box_colormap[ref_labels[i]])
-
+            line_set.paint_uniform_color(color) # box_colormap[ref_labels[i]])
+        if uncertainty is not None:
+            smaller_box,  bigger_box = convert_uncertainties_to_bounding_boxes(gt_boxes[i], uncertainty[i])
+            smaller_box.paint_uniform_color((1, 0, 0))
+            bigger_box.paint_uniform_color((1, 1, 0))
+            vis.add_geometry(smaller_box)
+            vis.add_geometry(bigger_box)
         vis.add_geometry(line_set)
 
         # if score is not None:

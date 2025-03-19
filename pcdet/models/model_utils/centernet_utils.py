@@ -172,7 +172,7 @@ def _topk(scores, K=40):
 
 def decode_bbox_from_heatmap(heatmap, rot_cos, rot_sin, center, center_z, dim,
                              point_cloud_range=None, voxel_size=None, feature_map_stride=None, vel=None, iou=None, K=100,
-                             circle_nms=False, score_thresh=None, post_center_limit_range=None):
+                             circle_nms=False, score_thresh=None, post_center_limit_range=None, uncertainties=None):
     batch_size, num_class, _, _ = heatmap.size()
 
     if circle_nms:
@@ -203,6 +203,10 @@ def decode_bbox_from_heatmap(heatmap, rot_cos, rot_sin, center, center_z, dim,
         iou = _transpose_and_gather_feat(iou, inds).view(batch_size, K)
 
     final_box_preds = torch.cat((box_part_list), dim=-1)
+
+    if uncertainties is not None:
+        final_uncertainties = _transpose_and_gather_feat(uncertainties, inds).view(final_box_preds.shape)
+
     final_scores = scores.view(batch_size, K)
     final_class_ids = class_ids.view(batch_size, K)
 
@@ -219,6 +223,7 @@ def decode_bbox_from_heatmap(heatmap, rot_cos, rot_sin, center, center_z, dim,
         cur_boxes = final_box_preds[k, cur_mask]
         cur_scores = final_scores[k, cur_mask]
         cur_labels = final_class_ids[k, cur_mask]
+        cur_uncertainties = final_uncertainties[k, cur_mask] if uncertainties is not None else None
 
         if circle_nms:
             assert False, 'not checked yet'
@@ -232,6 +237,7 @@ def decode_bbox_from_heatmap(heatmap, rot_cos, rot_sin, center, center_z, dim,
 
         ret_pred_dicts.append({
             'pred_boxes': cur_boxes,
+            'pred_uncertainties': cur_uncertainties,
             'pred_scores': cur_scores,
             'pred_labels': cur_labels
         })

@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
 
 from . import box_utils
 from pcdet.ops.iou3d_nms import iou3d_nms_utils
@@ -344,6 +345,50 @@ class FocalLossCenterNet(nn.Module):
         return self.neg_loss(out, target, mask=mask)
 
 
+def _uncertain_l1_loss(pred: Tensor,
+                      target: Tensor,
+                      sigma: Tensor,
+                      alpha: float = 1.0,
+                      mask: Tensor = None) -> Tensor:
+    """L1 loss with uncertainty.
+       Adapted from 
+       https://github.com/open-mmlab/mmdetection3d/blob/main/mmdet3d/models/losses/uncertain_smooth_l1_loss.py
+    Args:
+        pred (Tensor): The prediction.
+        target (Tensor): The learning target of the prediction.
+        sigma (Tensor): The sigma for uncertainty.
+        alpha (float): The coefficient of log(sigma).
+            Defaults to 1.0.
+
+    Returns:
+        Tensor: Calculated loss
+    """
+    assert pred.size() == target.size() == sigma.size(), 'The size of pred ' \
+        f'{pred.size()}, target {target.size()}, and sigma {sigma.size()} ' \
+        'are inconsistent.'
+    
+    num = mask.float().sum()
+    mask = mask.unsqueeze(2).expand_as(target).float()
+    isnotnan = (~ torch.isnan(target)).float()
+    mask *= isnotnan
+
+    pred = pred * mask
+    target = target * mask
+    sigma = sigma * mask
+
+    loss =  torch.abs(pred - target)**2 # was L1 in mmdet3d i.e. torch.abs(pred - target) 
+    loss = torch.exp(-sigma) * loss + alpha * sigma
+
+    loss = loss.transpose(2, 0)
+
+    loss = torch.sum(loss, dim=2)
+    loss = torch.sum(loss, dim=1)
+
+    loss = loss / torch.clamp_min(num, min=1.0)
+
+    return loss
+
+
 def _reg_loss(regr, gt_regr, mask):
     """
     Refer to https://github.com/tianweiy/CenterPoint
@@ -647,3 +692,57 @@ def calculate_iou_reg_loss_centerhead(batch_box_preds, mask, ind, gt_boxes):
 
     loss = (1.0 - iou).sum() / torch.clamp(mask.sum(), min=1e-4)
     return loss
+
+class UncertainL1Loss(nn.Module):
+    """L1 loss with uncertainty.
+       Adapted from 
+       https://github.com/open-mmlab/mmdetection3d/blob/main/mmdet3d/models/losses/uncertain_smooth_l1_loss.py
+    Args:
+        alpha (float): The coefficient of log(sigma).
+            Defaults to 1.0.
+        reduction (str): The method to reduce the loss.
+            Options are 'none', 'mean' and 'sum'. Defaults to 'mean'.
+        loss_weight (float): The weight of loss. Defaults to 1.0.
+    """
+
+    def __init__(self,
+                 alpha: float = 1.0,
+                 reduction: str = 'mean',
+                 loss_weight: float = 1.0) -> None:
+        super(UncertainL1Loss, self).__init__()
+        assert reduction in ['none', 'sum', 'mean']
+        self.alpha = alpha
+        self.reduction = reduction
+        self.loss_weight = loss_weight
+
+    def forward(self,
+                output: Tensor,
+                mask: Tensor,
+                ind: Tensor,
+                target: Tensor,
+                sigma: Tensor) -> Tensor:
+        """Forward function.
+
+        Args:
+            output (Tensor): The prediction.
+            mask (Tensor): feature masks
+            ind (Tensor): indices
+            target (Tensor): The learning target of the prediction.
+            sigma (Tensor): The log sigma for uncertainty.
+
+        Returns:
+            Tensor: Calculated loss
+        """
+        if ind is None:
+            pred = output
+            sigma_features = sigma
+        else:
+            pred = _transpose_and_gather_feat(output, ind)
+            sigma_features = _transpose_and_gather_feat(sigma, ind)
+        loss_bbox = self.loss_weight * _uncertain_l1_loss(
+            pred,
+            target,
+            sigma=sigma_features,
+            alpha=self.alpha,
+            mask=mask)
+        return loss_bbox
