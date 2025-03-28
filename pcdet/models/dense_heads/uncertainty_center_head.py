@@ -10,11 +10,11 @@ from ..dense_heads.center_head import CenterHead
 class UncertaintyCenterHead(CenterHead):
 
     def __init__(self, model_cfg, input_channels, num_class, class_names, grid_size, point_cloud_range, voxel_size,
-                 predict_boxes_when_training=True):
+                 predict_boxes_when_training=False):
         super().__init__(
             model_cfg, input_channels, num_class, class_names, grid_size, point_cloud_range, voxel_size,
                  predict_boxes_when_training=predict_boxes_when_training)
-        # self.uncertainty_activation = Softplus()
+        self.uncertainty_activation = Softplus()
 
     def build_losses(self):
         self.add_module('hm_loss_func', loss_utils.FocalLossCenterNet())
@@ -178,9 +178,8 @@ class UncertaintyCenterHead(CenterHead):
         for head_name in self.separate_head_cfg.HEAD_ORDER:
             if head_name not in pred_dict:
                 continue
-            # pred_uncertainty = self.uncertainty_activation(pred_dict[f"{head_name}_uncertainty"]) if f"{head_name}_uncertainty" in pred_dict \
-            pred_uncertainty = pred_dict[f"{head_name}_uncertainty"] if f"{head_name}_uncertainty" in pred_dict \
-                else torch.zeros_like(pred_dict[head_name])
+            pred_uncertainty = self.uncertainty_activation(pred_dict[f"{head_name}_uncertainty"]) - self.separate_head_cfg.UNCERTAINTY_LOWER_BOUND \
+                if f"{head_name}_uncertainty" in pred_dict else torch.zeros_like(pred_dict[head_name])
             if head_name == 'rot' and pred_uncertainty.shape != pred_dict['rot'].shape:
                 pred_uncertainty = torch.cat([pred_uncertainty, pred_uncertainty], dim=1)
 

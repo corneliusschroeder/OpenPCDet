@@ -43,6 +43,7 @@ MODEL:
         USE_BIAS_BEFORE_NORM: True
         NUM_HM_CONV: 2
         SEPARATE_HEAD_CFG:
+            UNCERTAINTY_LOWER_BOUND: -10.0
             HEAD_ORDER: ['center', 'center_z', 'dim', 'rot', 'vel']
             HEAD_DICT: {
                 'center': {'out_channels': 2, 'num_conv': 2},
@@ -85,7 +86,7 @@ MODEL:
 
 
 OPTIMIZATION:
-    BATCH_SIZE_PER_GPU: 2
+    BATCH_SIZE_PER_GPU: 32
     NUM_EPOCHS: 30
 
     OPTIMIZER: adam_onecycle

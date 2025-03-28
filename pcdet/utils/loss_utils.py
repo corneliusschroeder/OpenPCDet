@@ -376,8 +376,8 @@ def _uncertain_l1_loss(pred: Tensor,
     target = target * mask
     sigma = sigma * mask
 
-    loss =  torch.abs(pred - target)**2 # was L1 in mmdet3d i.e. torch.abs(pred - target) 
-    loss = torch.exp(-sigma) * loss + alpha * sigma
+    loss = torch.abs(pred - target)**2 # was L1 in mmdet3d i.e. torch.abs(pred - target) 
+    loss = 0.5 * (torch.exp(-sigma) * loss + alpha * sigma)
 
     loss = loss.transpose(2, 0)
 
