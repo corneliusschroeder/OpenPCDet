@@ -18,7 +18,7 @@ class UncertaintyCenterHead(CenterHead):
 
     def build_losses(self):
         self.add_module('hm_loss_func', loss_utils.FocalLossCenterNet())
-        self.add_module('reg_loss_func', loss_utils.UncertainL1Loss())
+        self.add_module('reg_loss_func', loss_utils.UncertainLoss(distribution=self.model_cfg.LOSS_CONFIG.UNCERTAINTY_LOSS_TYPE))
 
     def get_loss(self):
         pred_dicts = self.forward_ret_dict['pred_dicts']
@@ -178,7 +178,7 @@ class UncertaintyCenterHead(CenterHead):
         for head_name in self.separate_head_cfg.HEAD_ORDER:
             if head_name not in pred_dict:
                 continue
-            pred_uncertainty = self.uncertainty_activation(pred_dict[f"{head_name}_uncertainty"]) - self.separate_head_cfg.UNCERTAINTY_LOWER_BOUND \
+            pred_uncertainty = self.uncertainty_activation(pred_dict[f"{head_name}_uncertainty"]) + self.model_cfg.LOSS_CONFIG.UNCERTAINTY_SHIFT \
                 if f"{head_name}_uncertainty" in pred_dict else torch.zeros_like(pred_dict[head_name])
             if head_name == 'rot' and pred_uncertainty.shape != pred_dict['rot'].shape:
                 pred_uncertainty = torch.cat([pred_uncertainty, pred_uncertainty], dim=1)

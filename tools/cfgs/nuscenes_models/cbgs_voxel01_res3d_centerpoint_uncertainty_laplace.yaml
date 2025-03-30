@@ -61,8 +61,8 @@ MODEL:
             MIN_RADIUS: 2
 
         LOSS_CONFIG:
-            UNCERTAINTY_SHIFT: -10.0
-            UNCERTAINTY_LOSS_TYPE: gaussian
+            UNCERTAINTY_SHIFT: 0.0004
+            UNCERTAINTY_LOSS_TYPE: laplace
             LOSS_WEIGHTS: {
                 'cls_weight': 1.0,
                 'loc_weight': 0.25,
@@ -87,7 +87,7 @@ MODEL:
 
 
 OPTIMIZATION:
-    BATCH_SIZE_PER_GPU: 32
+    BATCH_SIZE_PER_GPU: 2
     NUM_EPOCHS: 30
 
     OPTIMIZER: adam_onecycle

@@ -345,12 +345,12 @@ class FocalLossCenterNet(nn.Module):
         return self.neg_loss(out, target, mask=mask)
 
 
-def _uncertain_l1_loss(pred: Tensor,
-                      target: Tensor,
-                      sigma: Tensor,
-                      alpha: float = 1.0,
-                      mask: Tensor = None) -> Tensor:
-    """L1 loss with uncertainty.
+def _uncertain_gaussian_loss(pred: Tensor,
+                             target: Tensor,
+                             sigma: Tensor,
+                             alpha: float = 1.0,
+                             mask: Tensor = None) -> Tensor:
+    """L2 loss with uncertainty.
        Adapted from 
        https://github.com/open-mmlab/mmdetection3d/blob/main/mmdet3d/models/losses/uncertain_smooth_l1_loss.py
     Args:
@@ -378,6 +378,49 @@ def _uncertain_l1_loss(pred: Tensor,
 
     loss = torch.abs(pred - target)**2 # was L1 in mmdet3d i.e. torch.abs(pred - target) 
     loss = 0.5 * (torch.exp(-sigma) * loss + alpha * sigma)
+
+    loss = loss.transpose(2, 0)
+
+    loss = torch.sum(loss, dim=2)
+    loss = torch.sum(loss, dim=1)
+
+    loss = loss / torch.clamp_min(num, min=1.0)
+
+    return loss
+
+
+def _uncertain_laplace_loss(pred: Tensor,
+                             target: Tensor,
+                             sigma: Tensor,
+                             alpha: float = 1.0,
+                             mask: Tensor = None) -> Tensor:
+    """L1 loss with uncertainty.
+
+    Args:
+        pred (Tensor): The prediction.
+        target (Tensor): The learning target of the prediction.
+        sigma (Tensor): The sigma for uncertainty.
+        alpha (float): The coefficient for sigma.
+            Defaults to 1.0.
+
+    Returns:
+        Tensor: Calculated loss
+    """
+    assert pred.size() == target.size() == sigma.size(), 'The size of pred ' \
+        f'{pred.size()}, target {target.size()}, and sigma {sigma.size()} ' \
+        'are inconsistent.'
+    
+    num = mask.float().sum()
+    mask = mask.unsqueeze(2).expand_as(target).float()
+    isnotnan = (~ torch.isnan(target)).float()
+    mask *= isnotnan
+
+    pred = pred * mask
+    target = target * mask
+    sigma = sigma * mask
+    sigma[sigma==0.0] = 1.0 # Empty slots are filled with 0s
+    loss = torch.abs(pred - target)
+    loss = (loss / sigma + alpha * torch.log(sigma))
 
     loss = loss.transpose(2, 0)
 
@@ -693,27 +736,26 @@ def calculate_iou_reg_loss_centerhead(batch_box_preds, mask, ind, gt_boxes):
     loss = (1.0 - iou).sum() / torch.clamp(mask.sum(), min=1e-4)
     return loss
 
-class UncertainL1Loss(nn.Module):
+class UncertainLoss(nn.Module):
     """L1 loss with uncertainty.
        Adapted from 
        https://github.com/open-mmlab/mmdetection3d/blob/main/mmdet3d/models/losses/uncertain_smooth_l1_loss.py
     Args:
         alpha (float): The coefficient of log(sigma).
             Defaults to 1.0.
-        reduction (str): The method to reduce the loss.
-            Options are 'none', 'mean' and 'sum'. Defaults to 'mean'.
+        distribution (str): Distribution type, options are laplace and gaussaian.
+            Defaults to gaussian.
         loss_weight (float): The weight of loss. Defaults to 1.0.
     """
 
     def __init__(self,
                  alpha: float = 1.0,
-                 reduction: str = 'mean',
+                 distribution: str = 'gaussian',
                  loss_weight: float = 1.0) -> None:
-        super(UncertainL1Loss, self).__init__()
-        assert reduction in ['none', 'sum', 'mean']
+        super(UncertainLoss, self).__init__()
         self.alpha = alpha
-        self.reduction = reduction
         self.loss_weight = loss_weight
+        self.loss_function = _uncertain_laplace_loss if distribution == 'laplace' else _uncertain_gaussian_loss
 
     def forward(self,
                 output: Tensor,
@@ -739,7 +781,7 @@ class UncertainL1Loss(nn.Module):
         else:
             pred = _transpose_and_gather_feat(output, ind)
             sigma_features = _transpose_and_gather_feat(sigma, ind)
-        loss_bbox = self.loss_weight * _uncertain_l1_loss(
+        loss_bbox = self.loss_weight * self.loss_function(
             pred,
             target,
             sigma=sigma_features,
