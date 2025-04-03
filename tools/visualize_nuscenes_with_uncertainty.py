@@ -1,8 +1,6 @@
 import argparse
-import glob
-from pathlib import Path
 
-import open3d
+import os
 from visual_utils import open3d_vis_utils as V
 
 import torch
@@ -17,7 +15,7 @@ def parse_config():
     parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/second.yaml',
                         help='specify the config for demo')
     parser.add_argument('--ckpt', type=str, default=None, help='specify the pretrained model')
-
+    parser.add_argument('--num_frames', type=int, default=5, help='Number of frames that will be visualized')
     args = parser.parse_args()
 
     cfg_from_yaml_file(args.cfg_file, cfg)
@@ -28,7 +26,7 @@ def parse_config():
 def main():
     args, cfg = parse_config()
     logger = common_utils.create_logger()
-    logger.info('-----------------Quick Demo of OpenPCDet-------------------------')
+    logger.info('-----------------Quick Visualization of Centerpoint OD with Uncertainty-------------------------')
     demo_dataset = NuScenesDataset(cfg.DATA_CONFIG, cfg.CLASS_NAMES, logger=logger, training=False)
     logger.info(f'Total number of samples: \t{len(demo_dataset)}')
 
@@ -36,8 +34,11 @@ def main():
     model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=True)
     model.cuda()
     model.eval()
+    os.environ["XDG_SESSION_TYPE"] = "x11" # Needed for newer open3d version + docker
     with torch.no_grad():
         for idx, data_dict in enumerate(demo_dataset):
+            if args.num_frames <= idx:
+                break
             logger.info(f'Visualized sample index: \t{idx + 1}')
             data_dict = demo_dataset.collate_batch([data_dict])
             load_data_to_gpu(data_dict)

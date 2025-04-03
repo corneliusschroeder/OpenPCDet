@@ -9,10 +9,12 @@ import matplotlib
 import numpy as np
 from scipy import stats
 
-box_colormap = [
-    [1, 1, 1], 
-    [0, 1, 0] # GT
-]
+BOX_COLORMAP = {
+  "GT": [0, 1, 0], # Green
+  "PRED": [0, 0, 1], # Blue
+  "LOWER_BOUND": [1, 0, 0], # Red
+  "UPPER_BOUND": [1, 1, 0] # Yellow
+}
 
 
 def compute_confidence_interval(variance, confidence=0.95, distribution=stats.norm):
@@ -27,14 +29,10 @@ def compute_confidence_interval(variance, confidence=0.95, distribution=stats.no
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Lower and upper bounds of CI.
     """
-    
-    variance[variance!=0.0] = np.exp(variance[variance!=0.0])
-    print(variance)
     z_score = distribution.ppf((1 + confidence) / 2)
     std_dev = np.sqrt(variance)
 
     distance_from_mean = z_score * std_dev
-    print(distance_from_mean)
     return distance_from_mean
 
 
@@ -88,10 +86,10 @@ def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_labels=None, ref_scor
         pts.colors = open3d.utility.Vector3dVector(point_colors)
 
     if gt_boxes is not None:
-        vis = draw_box(vis, gt_boxes, (0, 0, 1))
+        vis = draw_box(vis, gt_boxes, BOX_COLORMAP["GT"])
 
     if ref_boxes is not None:
-        vis = draw_box(vis, ref_boxes, (0, 1, 0), ref_labels, ref_scores, ref_uncertainties)
+        vis = draw_box(vis, ref_boxes, BOX_COLORMAP["PRED"], ref_labels, ref_scores, ref_uncertainties)
 
     vis.run()
     vis.destroy_window()
@@ -142,19 +140,16 @@ def convert_uncertainties_to_bounding_boxes(box, uncertainty):
     return smaller_box_lines, bigger_box_lines
 
 
-def draw_box(vis, gt_boxes, color=(0, 1, 0), ref_labels=None, score=None, uncertainty=None):
+def draw_box(vis, gt_boxes, color, ref_labels=None, score=None, uncertainty=None):
     for i in range(gt_boxes.shape[0]):
         if score is not None and score[i] < 0.5:
             continue
         line_set, box3d = translate_boxes_to_open3d_instance(gt_boxes[i])
-        if ref_labels is None:
-            line_set.paint_uniform_color(color)
-        else:
-            line_set.paint_uniform_color(color) # box_colormap[ref_labels[i]])
+        line_set.paint_uniform_color(color)
         if uncertainty is not None:
             smaller_box,  bigger_box = convert_uncertainties_to_bounding_boxes(gt_boxes[i], uncertainty[i])
-            smaller_box.paint_uniform_color((1, 0, 0))
-            bigger_box.paint_uniform_color((1, 1, 0))
+            smaller_box.paint_uniform_color(BOX_COLORMAP["LOWER_BOUND"])
+            bigger_box.paint_uniform_color(BOX_COLORMAP["UPPER_BOUND"])
             vis.add_geometry(smaller_box)
             vis.add_geometry(bigger_box)
         vis.add_geometry(line_set)

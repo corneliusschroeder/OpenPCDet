@@ -78,7 +78,8 @@ class DatasetTemplate(torch_data.Dataset):
             box_dim = 9 if self.dataset_cfg.get('TRAIN_WITH_SPEED', False) else 7
             ret_dict = {
                 'name': np.zeros(num_samples), 'score': np.zeros(num_samples),
-                'boxes_lidar': np.zeros([num_samples, box_dim]), 'pred_labels': np.zeros(num_samples)
+                'boxes_lidar': np.zeros([num_samples, box_dim]), 'pred_labels': np.zeros(num_samples),
+                'pred_uncertainties': np.zeros([num_samples, box_dim])
             }
             return ret_dict
 
@@ -86,6 +87,8 @@ class DatasetTemplate(torch_data.Dataset):
             pred_scores = box_dict['pred_scores'].cpu().numpy()
             pred_boxes = box_dict['pred_boxes'].cpu().numpy()
             pred_labels = box_dict['pred_labels'].cpu().numpy()
+            pred_uncertainties = box_dict['pred_uncertainties'].cpu.numpy() if 'pred_uncertainties' in box_dict \
+                else np.zeros_like(pred_scores)
             pred_dict = get_template_prediction(pred_scores.shape[0])
             if pred_scores.shape[0] == 0:
                 return pred_dict
@@ -94,7 +97,7 @@ class DatasetTemplate(torch_data.Dataset):
             pred_dict['score'] = pred_scores
             pred_dict['boxes_lidar'] = pred_boxes
             pred_dict['pred_labels'] = pred_labels
-
+            pred_dict['pred_uncertainties'] = pred_uncertainties
             return pred_dict
 
         annos = []

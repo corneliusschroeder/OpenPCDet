@@ -52,43 +52,47 @@ def eval_one_epoch(cfg, args, model, dataloader, epoch_id, logger, dist_test=Fal
         )
     model.eval()
 
-    if cfg.LOCAL_RANK == 0:
-        progress_bar = tqdm.tqdm(total=len(dataloader), leave=True, desc='eval', dynamic_ncols=True)
     start_time = time.time()
-    for i, batch_dict in enumerate(dataloader):
-        load_data_to_gpu(batch_dict)
-
-        if getattr(args, 'infer_time', False):
-            start_time = time.time()
-
-        with torch.no_grad():
-            pred_dicts, ret_dict = model(batch_dict)
-
-        disp_dict = {}
-
-        if getattr(args, 'infer_time', False):
-            inference_time = time.time() - start_time
-            infer_time_meter.update(inference_time * 1000)
-            # use ms to measure inference time
-            disp_dict['infer_time'] = f'{infer_time_meter.val:.2f}({infer_time_meter.avg:.2f})'
-
-        statistics_info(cfg, ret_dict, metric, disp_dict)
-        annos = dataset.generate_prediction_dicts(
-            batch_dict, pred_dicts, class_names,
-            output_path=final_output_dir if args.save_to_file else None
-        )
-        det_annos += annos
+    if (result_dir / 'result.pkl').exists():
+        with open(result_dir / 'result.pkl', 'rb') as f:
+            det_annos = pickle.load(f) 
+    else:
         if cfg.LOCAL_RANK == 0:
-            progress_bar.set_postfix(disp_dict)
-            progress_bar.update()
+            progress_bar = tqdm.tqdm(total=len(dataloader), leave=True, desc='eval', dynamic_ncols=True)
+        for i, batch_dict in enumerate(dataloader):
+            load_data_to_gpu(batch_dict)
 
-    if cfg.LOCAL_RANK == 0:
-        progress_bar.close()
+            if getattr(args, 'infer_time', False):
+                start_time = time.time()
 
-    if dist_test:
-        rank, world_size = common_utils.get_dist_info()
-        det_annos = common_utils.merge_results_dist(det_annos, len(dataset), tmpdir=result_dir / 'tmpdir')
-        metric = common_utils.merge_results_dist([metric], world_size, tmpdir=result_dir / 'tmpdir')
+            with torch.no_grad():
+                pred_dicts, ret_dict = model(batch_dict)
+
+            disp_dict = {}
+
+            if getattr(args, 'infer_time', False):
+                inference_time = time.time() - start_time
+                infer_time_meter.update(inference_time * 1000)
+                # use ms to measure inference time
+                disp_dict['infer_time'] = f'{infer_time_meter.val:.2f}({infer_time_meter.avg:.2f})'
+
+            statistics_info(cfg, ret_dict, metric, disp_dict)
+            annos = dataset.generate_prediction_dicts(
+                batch_dict, pred_dicts, class_names,
+                output_path=final_output_dir if args.save_to_file else None
+            )
+            det_annos += annos
+            if cfg.LOCAL_RANK == 0:
+                progress_bar.set_postfix(disp_dict)
+                progress_bar.update()
+
+        if cfg.LOCAL_RANK == 0:
+            progress_bar.close()
+
+        if dist_test:
+            rank, world_size = common_utils.get_dist_info()
+            det_annos = common_utils.merge_results_dist(det_annos, len(dataset), tmpdir=result_dir / 'tmpdir')
+            metric = common_utils.merge_results_dist([metric], world_size, tmpdir=result_dir / 'tmpdir')
 
     logger.info('*************** Performance of EPOCH %s *****************' % epoch_id)
     sec_per_example = (time.time() - start_time) / len(dataloader.dataset)
@@ -119,8 +123,9 @@ def eval_one_epoch(cfg, args, model, dataloader, epoch_id, logger, dist_test=Fal
     logger.info('Average predicted number of objects(%d samples): %.3f'
                 % (len(det_annos), total_pred_objects / max(1, len(det_annos))))
 
-    with open(result_dir / 'result.pkl', 'wb') as f:
-        pickle.dump(det_annos, f)
+    if not (result_dir / 'result.pkl').exists():
+        with open(result_dir / 'result.pkl', 'wb') as f:
+            pickle.dump(det_annos, f)
 
     result_str, result_dict = dataset.evaluation(
         det_annos, class_names,

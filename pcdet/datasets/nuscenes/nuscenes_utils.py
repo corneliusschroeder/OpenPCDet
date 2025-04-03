@@ -472,6 +472,8 @@ def boxes_lidar_to_nusenes(det_info):
     boxes3d = det_info['boxes_lidar']
     scores = det_info['score']
     labels = det_info['pred_labels']
+    uncertainties = det_info['pred_uncertainties']
+    uncertainties[:, [3, 4]] = uncertainties[:, [4, 3]] # reorded to match bbox convention
 
     box_list = []
     for k in range(boxes3d.shape[0]):
@@ -480,7 +482,7 @@ def boxes_lidar_to_nusenes(det_info):
         box = Box(
             boxes3d[k, :3],
             boxes3d[k, [4, 3, 5]],  # wlh
-            quat, label=labels[k], score=scores[k], velocity=velocity,
+            quat, label=labels[k], score=scores[k], velocity=velocity, uncertainty=uncertainties[k]
         )
         box_list.append(box)
     return box_list
@@ -547,7 +549,8 @@ def transform_det_annos_to_nusc_annos(det_annos, nusc):
                 'velocity': box.velocity[:2].tolist(),
                 'detection_name': name,
                 'detection_score': box.score,
-                'attribute_name': attr
+                'attribute_name': attr,
+                'uncertainty': box.uncertainty.tolist()
             }
             annos.append(nusc_anno)
 
@@ -562,8 +565,9 @@ def format_nuscene_results(metrics, class_names, version='default'):
         threshs = ', '.join(list(metrics['label_aps'][name].keys()))
         ap_list = list(metrics['label_aps'][name].values())
 
-        err_name =', '.join([x.split('_')[0] for x in list(metrics['label_tp_errors'][name].keys())])
-        error_list = list(metrics['label_tp_errors'][name].values())
+        class_tp_errors = metrics['label_tp_errors'][name]
+        err_name =', '.join([x.split('_')[0] for x in list(metrics['label_tp_errors'][name].keys()) if not x.startswith("CI")])
+        error_list = [val for key, val in class_tp_errors.items() if not key.startswith("CI")]
 
         result += f'***{name} error@{err_name} | AP@{threshs}\n'
         result += ', '.join(['%.2f' % x for x in error_list]) + ' | '

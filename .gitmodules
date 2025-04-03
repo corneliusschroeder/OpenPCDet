@@ -1,0 +1,3 @@
+[submodule "nuscenes_devkit_uncertainty"]
+	path = submodules/nuscenes-devkit
+	url = git@github.com:marcinkusz/nuscenes_devkit_uncertainty.git

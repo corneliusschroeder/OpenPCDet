@@ -118,6 +118,10 @@ class UncertaintyCenterHead(CenterHead):
             
             batch_uncertainties = torch.cat(collected_uncertainties, dim=1)
             
+            # TODO: the same for laplace
+            if self.model_cfg.LOSS_CONFIG.UNCERTAINTY_LOSS_TYPE == 'gaussian':
+                batch_uncertainties[batch_uncertainties!=0.0] = torch.exp(batch_uncertainties[batch_uncertainties!=0.0])
+
             batch_iou = (pred_dict['iou'] + 1) * 0.5 if 'iou' in pred_dict else None
 
             final_pred_dicts = centernet_utils.decode_bbox_from_heatmap(
