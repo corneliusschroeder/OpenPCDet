@@ -294,6 +294,8 @@ class NuScenesDataset(DatasetTemplate):
             eval_version = 'cvpr_2019'
             eval_config = config_factory(eval_version)
 
+        eval_config.distribution = kwargs['distribution'] if 'distribution' in kwargs else 'gaussian'
+
         nusc_eval = NuScenesEval(
             nusc,
             config=eval_config,
