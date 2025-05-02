@@ -88,7 +88,7 @@ class DatasetTemplate(torch_data.Dataset):
             pred_boxes = box_dict['pred_boxes'].cpu().numpy()
             pred_labels = box_dict['pred_labels'].cpu().numpy()
             pred_uncertainties = box_dict['pred_uncertainties'].cpu().numpy() if 'pred_uncertainties' in box_dict \
-                else np.zeros_like(pred_scores)
+                else np.zeros_like(pred_boxes)
             pred_dict = get_template_prediction(pred_scores.shape[0])
             if pred_scores.shape[0] == 0:
                 return pred_dict

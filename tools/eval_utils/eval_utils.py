@@ -127,11 +127,13 @@ def eval_one_epoch(cfg, args, model, dataloader, epoch_id, logger, dist_test=Fal
         with open(result_dir / 'result.pkl', 'wb') as f:
             pickle.dump(det_annos, f)
 
+    distribution = cfg.MODEL.DENSE_HEAD.LOSS_CONFIG.UNCERTAINTY_LOSS_TYPE \
+        if hasattr(cfg.MODEL.DENSE_HEAD.LOSS_CONFIG, 'UNCERTAINTY_LOSS_TYPE') else 'gaussian'
     result_str, result_dict = dataset.evaluation(
         det_annos, class_names,
         eval_metric=cfg.MODEL.POST_PROCESSING.EVAL_METRIC,
         output_path=final_output_dir,
-        distribution=cfg.MODEL.DENSE_HEAD.LOSS_CONFIG.UNCERTAINTY_LOSS_TYPE
+        distribution=distribution 
     )
 
     logger.info(result_str)
